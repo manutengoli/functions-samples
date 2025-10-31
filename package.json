@@ -1,34 +1,314 @@
-{
-  "name": "functions-samples",
-  "version": "1.0.0",
-  "description": "Samples for Cloud Functions for Firebase",
-  "author": "Firebase (https://firebase.google.com/)",
-  "license": "Apache-2.0",
-  "scripts": {
-    "bootstrap": "pnpm --recursive install",
-    "bootstrap-1st-gen": "pnpm --recursive --filter  \"./Node-1st-gen/**\" install",
-    "bootstrap-2nd-gen": "pnpm --recursive --filter  \"./Node/**\" install",
-    "lint-1st-gen": "pnpm --recursive --filter  \"./Node-1st-gen/**\" run lint",
-    "lint-2nd-gen": "pnpm --recursive --filter  \"./Node/**\" run lint",
-    "test-1st-gen": "pnpm --recursive --filter  \"./Node-1st-gen/**\" run test ",
-    "test-2nd-gen": "pnpm --recursive --filter  \"./Node/**\" run test ",
-    "compile-1st-gen": "pnpm --recursive --filter  \"./Node-1st-gen/**\" run compile ",
-    "compile-2nd-gen": "pnpm --recursive --filter  \"./Node/**\" run compile "
-  },
-  "devDependencies": {
-    "eslint": "^8.57.1",
-    "pnpm": "^9.15.4",
-    "typescript": "^5.0.4"
-  },
-  "engines": {
-    "node": "22"
-  },
-  "pnpm": {
-    "peerDependencyRules": {
-      "ignoreMissing": [
-        "@firebase/app-compat",
-        "@firebase/app-types"
-      ]
+// ElEleSanat_Reservation_App.jsx
+// Single-file React component prototype for "El Ele Sanat Rezervasyon Sistemi"
+// - Uses Tailwind CSS classes for styling (ensure Tailwind is set up in your project)
+// - Persists reservations to localStorage (key: elEleReservations)
+// - Reservation window: 20:00 - 21:00 (one slot per date)
+// - Customer view + simple Admin panel (password-protected) in the same app
+
+import React, { useEffect, useState } from "react";
+
+const TOTAL_TABLES = 20;
+const SEATS_PER_TABLE = 4;
+const STORAGE_KEY = "elEleReservations";
+const ADMIN_PASSWORD = "1234"; // change before production
+
+function uid() {
+  return Math.random().toString(36).slice(2, 9);
+}
+
+function todayISO() {
+  const d = new Date();
+  return d.toISOString().slice(0, 10);
+}
+
+export default function App() {
+  const [date, setDate] = useState(todayISO());
+  const [reservations, setReservations] = useState({});
+  const [selectedTable, setSelectedTable] = useState(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [form, setForm] = useState({ name: "", phone: "", people: 1 });
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminPass, setAdminPass] = useState("");
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) setReservations(JSON.parse(raw));
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(reservations));
+  }, [reservations]);
+
+  function getDayReservations(day) {
+    return reservations[day] || {};
+  }
+
+  function statusForTable(day, tableId) {
+    const dayRes = getDayReservations(day);
+    return dayRes[tableId] || null; // null or reservation object
+  }
+
+  function openReserve(tableId) {
+    setSelectedTable(tableId);
+    setForm({ name: "", phone: "", people: 1 });
+    setModalOpen(true);
+  }
+
+  function submitReservation(e) {
+    e.preventDefault();
+    if (!form.name || !form.phone) {
+      setMessage("Lütfen isim ve telefon girin.");
+      return;
+    }
+    const day = date;
+    const dayRes = { ...(reservations[day] || {}) };
+    // check if table already reserved
+    if (dayRes[selectedTable]) {
+      setMessage("Bu masa zaten rezerve edilmiş.");
+      return;
+    }
+    const newRes = {
+      id: uid(),
+      table: selectedTable,
+      name: form.name,
+      phone: form.phone,
+      people: form.people,
+      status: "pending", // pending/confirmed/cancelled
+      createdAt: new Date().toISOString(),
+      slot: "20:00-21:00",
+    };
+    dayRes[selectedTable] = newRes;
+    setReservations({ ...reservations, [day]: dayRes });
+    setModalOpen(false);
+    setMessage("Rezervasyon başarıyla oluşturuldu. Yönetici onayına tabi.");
+  }
+
+  function adminLogin() {
+    if (adminPass === ADMIN_PASSWORD) {
+      setIsAdmin(true);
+      setAdminPass("");
+      setMessage("");
+    } else {
+      setMessage("Admin şifresi yanlış.");
     }
   }
+
+  function adminLogout() {
+    setIsAdmin(false);
+  }
+
+  function changeStatus(day, tableId, status) {
+    const dayRes = { ...(reservations[day] || {}) };
+    if (!dayRes[tableId]) return;
+    dayRes[tableId] = { ...dayRes[tableId], status };
+    setReservations({ ...reservations, [day]: dayRes });
+  }
+
+  function cancelReservation(day, tableId) {
+    const dayRes = { ...(reservations[day] || {}) };
+    if (!dayRes[tableId]) return;
+    dayRes[tableId].status = "cancelled";
+    setReservations({ ...reservations, [day]: dayRes });
+  }
+
+  function freeTable(day, tableId) {
+    const dayRes = { ...(reservations[day] || {}) };
+    if (!dayRes[tableId]) return;
+    delete dayRes[tableId];
+    setReservations({ ...reservations, [day]: dayRes });
+  }
+
+  const dayRes = getDayReservations(date);
+  const reservedCount = Object.keys(dayRes).length;
+  const freeCount = TOTAL_TABLES - reservedCount;
+
+  return (
+    <div className="min-h-screen bg-gray-50 p-4 md:p-8">
+      <header className="max-w-4xl mx-auto mb-6">
+        <h1 className="text-2xl md:text-3xl font-bold">El Ele Sanat — Rezervasyon</h1>
+        <p className="text-sm text-gray-600">Rezervasyon saati: <strong>20:00 - 21:00</strong> (her gün)</p>
+      </header>
+
+      <main className="max-w-4xl mx-auto grid gap-6 md:grid-cols-3">
+        <section className="md:col-span-2 bg-white p-4 rounded-lg shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <label className="text-sm">Tarih:</label>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="border px-2 py-1 rounded"
+              />
+            </div>
+
+            <div className="text-sm text-gray-700">
+              <span className="font-semibold">{reservedCount}</span> rezerve • <span className="font-semibold">{freeCount}</span> boş
+            </div>
+          </div>
+
+          <div className="grid grid-cols-4 gap-3">
+            {Array.from({ length: TOTAL_TABLES }).map((_, idx) => {
+              const tableId = String(idx + 1);
+              const res = statusForTable(date, tableId);
+              const status = res ? res.status : "free";
+              let bg = "bg-green-100 border-green-400";
+              if (status === "pending") bg = "bg-yellow-100 border-yellow-400";
+              if (status === "confirmed") bg = "bg-red-100 border-red-400";
+              if (status === "cancelled") bg = "bg-gray-100 border-gray-300";
+
+              return (
+                <div key={tableId} className={`p-3 rounded border ${bg} flex flex-col justify-between`}>
+                  <div>
+                    <div className="text-lg font-semibold">Masa {tableId}</div>
+                    <div className="text-xs text-gray-600">4 kişilik</div>
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between gap-2">
+                    <div className="text-xs">
+                      {status === "free" && <span className="text-green-700">Boş</span>}
+                      {status === "pending" && <span className="text-yellow-700">Beklemede</span>}
+                      {status === "confirmed" && <span className="text-red-700">Rezerve</span>}
+                      {status === "cancelled" && <span className="text-gray-700">İptal</span>}
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {!res && (
+                        <button
+                          className="text-sm px-2 py-1 border rounded text-blue-600"
+                          onClick={() => openReserve(tableId)}
+                        >
+                          Rezerve Et
+                        </button>
+                      )}
+
+                      {res && (
+                        <button
+                          className="text-sm px-2 py-1 border rounded text-gray-700"
+                          onClick={() => {
+                            setSelectedTable(tableId);
+                            setModalOpen(true);
+                            setForm({ name: res.name, phone: res.phone, people: res.people });
+                          }}
+                        >
+                          Detay
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <p className="mt-4 text-xs text-gray-500">Not: Rezervasyon talebi oluşturulduktan sonra yönetici onayı gereklidir.</p>
+        </section>
+
+        <aside className="bg-white p-4 rounded-lg shadow-sm">
+          <h2 className="font-semibold mb-2">Kısa Bilgiler</h2>
+          <ul className="text-sm text-gray-700 space-y-2">
+            <li>Toplam masa: <strong>{TOTAL_TABLES}</strong></li>
+            <li>Kişi kapasitesi (masa başı): <strong>{SEATS_PER_TABLE}</strong></li>
+            <li>Rezervasyon saati: <strong>20:00 - 21:00</strong></li>
+            <li>Tarih seçip masa durumunu görebilirsiniz.</li>
+          </ul>
+
+          <div className="mt-4">
+            {!isAdmin ? (
+              <div>
+                <h3 className="text-sm font-medium mb-2">Yönetici Girişi</h3>
+                <input
+                  type="password"
+                  placeholder="Şifre"
+                  value={adminPass}
+                  onChange={(e) => setAdminPass(e.target.value)}
+                  className="w-full border px-2 py-1 rounded mb-2"
+                />
+                <button onClick={adminLogin} className="w-full bg-blue-600 text-white py-1 rounded">Giriş</button>
+              </div>
+            ) : (
+              <div>
+                <div className="text-sm mb-2">Yönetici olarak giriş yaptınız.</div>
+                <button onClick={adminLogout} className="w-full border py-1 rounded">Çıkış Yap</button>
+              </div>
+            )}
+          </div>
+
+          {message && <div className="mt-3 text-sm text-red-600">{message}</div>}
+
+          {isAdmin && (
+            <div className="mt-4">
+              <h3 className="font-semibold mb-2">Bugünkü Rezervasyonlar</h3>
+              <div className="space-y-2 max-h-60 overflow-auto">
+                {Object.keys(dayRes).length === 0 && <div className="text-sm text-gray-500">Hiç rezervasyon yok.</div>}
+                {Object.entries(dayRes).map(([tableId, r]) => (
+                  <div key={r.id} className="border rounded p-2 text-sm">
+                    <div className="flex justify-between items-start gap-2">
+                      <div>
+                        <div className="font-semibold">Masa {tableId} — {r.name} ({r.people} kişi)</div>
+                        <div className="text-xs text-gray-600">{r.phone} • {r.slot}</div>
+                        <div className="text-xs mt-1">Durum: <strong>{r.status}</strong></div>
+                      </div>
+
+                      <div className="flex flex-col gap-2">
+                        {r.status !== "confirmed" && (
+                          <button onClick={() => changeStatus(date, tableId, "confirmed")} className="px-2 py-1 text-xs bg-green-600 text-white rounded">Onayla</button>
+                        )}
+                        {r.status !== "cancelled" && (
+                          <button onClick={() => cancelReservation(date, tableId)} className="px-2 py-1 text-xs border rounded">İptal</button>
+                        )}
+                        <button onClick={() => freeTable(date, tableId)} className="px-2 py-1 text-xs border rounded">Masa Boşalt</button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </aside>
+      </main>
+
+      {/* Modal for reservation form or details */}
+      {modalOpen && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-lg p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-semibold">{selectedTable ? `Masa ${selectedTable}` : "Rezervasyon"}</h3>
+              <button className="text-gray-600" onClick={() => setModalOpen(false)}>Kapat</button>
+            </div>
+
+            <form onSubmit={submitReservation} className="space-y-3">
+              <div className="text-sm">Tarih: <strong>{date}</strong></div>
+              <div className="text-sm">Saat: <strong>20:00 - 21:00</strong></div>
+
+              <div>
+                <label className="block text-xs mb-1">Ad Soyad</label>
+                <input className="w-full border px-2 py-1 rounded" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+              </div>
+
+              <div>
+                <label className="block text-xs mb-1">Telefon</label>
+                <input className="w-full border px-2 py-1 rounded" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+              </div>
+
+              <div>
+                <label className="block text-xs mb-1">Kişi sayısı</label>
+                <select className="w-full border px-2 py-1 rounded" value={form.people} onChange={(e) => setForm({ ...form, people: Number(e.target.value) })}>
+                  {[1,2,3,4].map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </div>
+
+              <div className="flex gap-2">
+                <button type="submit" className="flex-1 bg-blue-600 text-white py-2 rounded">Rezervasyon Gönder</button>
+                <button type="button" onClick={() => setModalOpen(false)} className="flex-1 border py-2 rounded">İptal</button>
+              </div>
+            </form>
+
+            <div className="text-xs text-gray-500 mt-2">Not: Rezervasyonlar yönetici onayına tabidir. Onaylandığında rezervasyonunuz kesinleşir.</div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
